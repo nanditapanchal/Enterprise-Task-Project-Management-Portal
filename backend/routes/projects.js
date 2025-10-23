@@ -37,5 +37,13 @@ router.delete('/:id', auth, async (req, res) => {
   await Project.findByIdAndDelete(req.params.id);
   res.json({ message: 'Deleted' });
 });
+// GET all projects (admin)
+router.get('/all', auth, permit('admin'), async (req, res) => {
+  const projects = await Project.find()
+    .populate('members', 'name email role')
+    .populate('createdBy', 'name email role');
+  res.json(projects);
+});
+
 
 export default router;
