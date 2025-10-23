@@ -10,6 +10,8 @@ import userRoutes from './routes/users.js';
 import projectRoutes from './routes/projects.js';
 import taskRoutes from './routes/tasks.js';
 import messageRoutes from './routes/messages.js';
+import aiRoutes from './routes/ai.js';
+
 
 dotenv.config();
 const app = express();
@@ -20,7 +22,7 @@ const io = new IOServer(server, {
     methods: ['GET','POST']
   }
 });
-
+app.use('/api/ai', aiRoutes);
 app.use(cors());
 app.use(express.json());
 
