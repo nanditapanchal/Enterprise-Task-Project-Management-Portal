@@ -4,7 +4,8 @@ import Login from './pages/Login';
 import Register from './pages/Register';
 import Dashboard from './pages/Dashboard';
 import ProjectPage from './pages/ProjectPage';
-import AddProject from './pages/AddProject'; // ← Import AddProject
+import AddProject from './pages/AddProject'; 
+import AdminDashboard from './pages/AdminDashboard';
 import API from './api';
 
 function App() {
@@ -54,6 +55,8 @@ function App() {
           <Route path="/login" element={<Login onLogin={(u, token) => { localStorage.setItem('token', token); localStorage.setItem('user', JSON.stringify(u)); setUser(u); }} />} />
           <Route path="/register" element={<Register />} />
           <Route path="/project/:id" element={<ProjectPage user={user} />} />
+          <Route path="/admin" element={user?.role === 'admin' ? <AdminDashboard /> : <Navigate to="/" />} />
+
         </Routes>
       </main>
     </div>
