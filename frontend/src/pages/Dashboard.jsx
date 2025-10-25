@@ -21,39 +21,37 @@ export default function Dashboard() {
   const [chatInput, setChatInput] = useState('');
   const [chatMessages, setChatMessages] = useState([]);
 
+  const user = JSON.parse(localStorage.getItem('user'));
+
   // Fetch projects and tasks
   useEffect(() => {
-  async function fetchData() {
-    try {
-      const user = JSON.parse(localStorage.getItem('user')); // assuming user stored after login
-      let projRes, taskRes;
+    async function fetchData() {
+      try {
+        let projRes, taskRes;
 
-      if (user?.role === 'admin') {
-        // Admin sees all
-        [projRes, taskRes] = await Promise.all([
-          API.get('/projects/all'),
-          API.get('/tasks/all'),
-        ]);
-      } else {
-        // Employees see assigned projects and their tasks
-        [projRes, taskRes] = await Promise.all([
-          API.get('/projects/my-projects'),
-          API.get('/tasks/my-tasks'),
-        ]);
+        if (user?.role === 'admin') {
+          [projRes, taskRes] = await Promise.all([
+            API.get('/projects/all'),
+            API.get('/tasks/all'),
+          ]);
+        } else {
+          [projRes, taskRes] = await Promise.all([
+            API.get('/projects/my-projects'),
+            API.get('/tasks/my-tasks'),
+          ]);
+        }
+
+        setProjects(projRes.data);
+        setTasks(taskRes.data);
+      } catch (err) {
+        console.error('Error fetching dashboard data:', err);
       }
-
-      setProjects(projRes.data);
-      setTasks(taskRes.data);
-    } catch (err) {
-      console.error('Error fetching dashboard data:', err);
     }
-  }
 
-  fetchData();
-}, []);
+    fetchData();
+  }, []);
 
-
-  // Generate AI suggestions when projects or tasks change
+  // Generate AI suggestions
   useEffect(() => {
     if (projects.length && tasks.length) generateAISuggestions(projects, tasks);
   }, [projects, tasks]);
@@ -64,8 +62,7 @@ export default function Dashboard() {
 
     projectsData.forEach((p) => {
       const projectTasks = tasksData.filter(
-        (t) =>
-          (t.projectId?._id || t.projectId) === p._id // handle populated or just ID
+        (t) => (t.projectId?._id || t.projectId) === p._id
       );
       const pending = projectTasks.filter((t) => t.status !== 'Done').length;
       const deadline = new Date(p.deadline);
@@ -138,6 +135,15 @@ export default function Dashboard() {
         borderWidth: 1,
       },
     ],
+  };
+
+  const getPriorityBadge = (priority) => {
+    switch(priority) {
+      case 'High': return 'bg-red-500 text-white';
+      case 'Medium': return 'bg-yellow-400 text-black';
+      case 'Low': return 'bg-green-500 text-white';
+      default: return 'bg-gray-300 text-black';
+    }
   };
 
   return (
@@ -228,6 +234,57 @@ export default function Dashboard() {
                 </div>
                 <p className="text-sm mt-1">{progress}% Complete</p>
               </div>
+
+              {/* Task Status Update Dropdown */}
+              {/* Task Status Update Dropdown with urgency highlighting */}
+{projectTasks.length > 0 && (
+  <div className="mt-4 space-y-2">
+    {projectTasks.map((task) => {
+      // Determine task urgency
+      const today = new Date();
+      const deadline = new Date(task.deadline);
+      const diffDays = Math.ceil((deadline - today) / (1000 * 60 * 60 * 24));
+      let bgColor = 'bg-gray-50'; // default
+
+      if (task.status !== 'Done' && diffDays < 1) bgColor = 'bg-red-100';
+      else if (task.status !== 'Done' && diffDays <= 3) bgColor = 'bg-orange-100';
+      else if (task.status === 'Done') bgColor = 'bg-green-100';
+
+      return (
+        <div
+          key={task._id}
+          className={`flex justify-between items-center p-2 rounded ${bgColor}`}
+        >
+          <span className="text-sm">{task.title}</span>
+          {(task.assignee?._id === user.id || user.role === 'admin') && (
+            <select
+              value={task.status}
+              onChange={async (e) => {
+                const newStatus = e.target.value;
+                try {
+                  await API.put(`/tasks/task/${task._id}`, { status: newStatus });
+                  setTasks((prev) =>
+                    prev.map((t) =>
+                      t._id === task._id ? { ...t, status: newStatus } : t
+                    )
+                  );
+                } catch (err) {
+                  console.error(err);
+                }
+              }}
+              className="border text-sm p-1 rounded"
+            >
+              {['To-Do', 'In Progress', 'Done'].map((s) => (
+                <option key={s} value={s}>{s}</option>
+              ))}
+            </select>
+          )}
+        </div>
+      );
+    })}
+  </div>
+)}
+
               {projectTasks.length > 0 && (
                 <div className="mt-4">
                   <Bar data={barData} options={{ plugins: { legend: { display: false } } }} />
