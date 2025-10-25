@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Routes, Route, Link, Navigate } from 'react-router-dom';
+import { Routes, Route, Link, Navigate, useNavigate } from 'react-router-dom';
 import Login from './pages/Login';
 import Register from './pages/Register';
 import Dashboard from './pages/Dashboard';
@@ -10,6 +10,7 @@ import API from './api';
 
 function App() {
   const [user, setUser] = useState(() => JSON.parse(localStorage.getItem('user')));
+  const navigate = useNavigate();
 
   useEffect(() => {
     async function fetchMe() {
@@ -17,7 +18,9 @@ function App() {
         const res = await API.get('/users/me');
         setUser(res.data);
         localStorage.setItem('user', JSON.stringify(res.data));
-      } catch (err) { console.log('not logged in'); }
+      } catch (err) { 
+        console.log('not logged in'); 
+      }
     }
     if (user) fetchMe();
   }, []);
@@ -26,18 +29,37 @@ function App() {
     localStorage.removeItem('token');
     localStorage.removeItem('user');
     setUser(null);
-  }
+    navigate('/login');
+  };
+
+  const handleLogin = (u, token) => {
+    localStorage.setItem('token', token);
+    localStorage.setItem('user', JSON.stringify(u));
+    setUser(u);
+
+    // ✅ Redirect based on role
+    if (u.role === 'admin') {
+      navigate('/admin');
+    } else {
+      navigate('/');
+    }
+  };
 
   return (
     <div className="min-h-screen bg-gray-100">
       <nav className="bg-white shadow p-4 flex justify-between">
-        <div className="font-bold">ETPM</div>
-        <div className="space-x-4">
+        <div className="font-bold text-lg">ETPM</div>
+        <div className="space-x-4 flex items-center">
           <Link to="/">Home</Link>
           {user ? (
             <>
-              <span>{user.name}</span>
-              <button onClick={handleLogout} className="px-3 py-1 bg-red-500 text-white rounded">Logout</button>
+              <span className="text-gray-600">{user.name}</span>
+              <button
+                onClick={handleLogout}
+                className="px-3 py-1 bg-red-500 text-white rounded hover:bg-red-600"
+              >
+                Logout
+              </button>
             </>
           ) : (
             <>
@@ -50,17 +72,26 @@ function App() {
 
       <main className="p-6">
         <Routes>
-          <Route path="/" element={user ? <Dashboard user={user} /> : <Navigate to="/login" />} />
-          <Route path="/add-project" element={user ? <AddProject /> : <Navigate to="/login" />} />
-          <Route path="/login" element={<Login onLogin={(u, token) => { localStorage.setItem('token', token); localStorage.setItem('user', JSON.stringify(u)); setUser(u); }} />} />
-          <Route path="/register" element={<Register />} />
-          <Route path="/project/:id" element={<ProjectPage user={user} />} />
-          <Route path="/admin" element={user?.role === 'admin' ? <AdminDashboard /> : <Navigate to="/" />} />
+  <Route
+    path="/"
+    element={
+      user ? (
+        user.role === 'admin' ? <Navigate to="/admin" /> : <Dashboard user={user} />
+      ) : (
+        <Navigate to="/login" />
+      )
+    }
+  />
+  <Route path="/login" element={<Login onLogin={(u, token) => { localStorage.setItem('token', token); localStorage.setItem('user', JSON.stringify(u)); setUser(u); }} />} />
+  <Route path="/register" element={<Register />} />
+  <Route path="/add-project" element={user ? <AddProject /> : <Navigate to="/login" />} />
+  <Route path="/project/:id" element={<ProjectPage user={user} />} />
+  <Route path="/admin" element={user?.role === 'admin' ? <AdminDashboard /> : <Navigate to="/" />} />
+</Routes>
 
-        </Routes>
       </main>
     </div>
-  )
+  );
 }
 
 export default App;

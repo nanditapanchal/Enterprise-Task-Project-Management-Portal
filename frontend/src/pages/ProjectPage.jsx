@@ -141,7 +141,7 @@ export default function ProjectPage({ user }) {
             <h2 className="text-2xl font-bold">{project?.name}</h2>
             <p className="text-gray-600">{project?.description}</p>
           </div>
-          {(user.role === 'admin' || user.id === project?.createdBy) && (
+          {user.role === 'admin'  && (
             <div className="space-x-2">
               <button onClick={editProject} className="px-3 py-1 bg-yellow-500 text-white rounded">Edit</button>
               <button onClick={deleteProject} className="px-3 py-1 bg-red-500 text-white rounded">Delete</button>
@@ -150,7 +150,7 @@ export default function ProjectPage({ user }) {
         </div>
 
         {/* Add Task Form */}
-        {(user.role === 'admin' || project?.members.some(m => m._id === user.id)) && (
+        {user.role === 'admin' && (
           <motion.div
             className="bg-white p-4 rounded shadow mb-4"
             initial={{ opacity: 0, y: -10 }}

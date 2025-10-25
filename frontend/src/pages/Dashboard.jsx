@@ -21,38 +21,52 @@ export default function Dashboard() {
   const [chatInput, setChatInput] = useState('');
   const [chatMessages, setChatMessages] = useState([]);
 
+  // Fetch projects and tasks
   useEffect(() => {
-    loadProjects();
-    loadTasks();
-  }, []);
-
-  const loadProjects = async () => {
+  async function fetchData() {
     try {
-      const res = await API.get('/projects');
-      setProjects(res.data);
-      generateAISuggestions(res.data, tasks);
-    } catch (err) {
-      console.error(err);
-    }
-  };
+      const user = JSON.parse(localStorage.getItem('user')); // assuming user stored after login
+      let projRes, taskRes;
 
-  const loadTasks = async () => {
-    try {
-      const res = await API.get('/tasks');
-      setTasks(res.data);
-      generateAISuggestions(projects, res.data);
-    } catch (err) {
-      console.error(err);
-    }
-  };
+      if (user?.role === 'admin') {
+        // Admin sees all
+        [projRes, taskRes] = await Promise.all([
+          API.get('/projects/all'),
+          API.get('/tasks/all'),
+        ]);
+      } else {
+        // Employees see assigned projects and their tasks
+        [projRes, taskRes] = await Promise.all([
+          API.get('/projects/my-projects'),
+          API.get('/tasks/my-tasks'),
+        ]);
+      }
 
-  // Generate AI suggestions with severity
+      setProjects(projRes.data);
+      setTasks(taskRes.data);
+    } catch (err) {
+      console.error('Error fetching dashboard data:', err);
+    }
+  }
+
+  fetchData();
+}, []);
+
+
+  // Generate AI suggestions when projects or tasks change
+  useEffect(() => {
+    if (projects.length && tasks.length) generateAISuggestions(projects, tasks);
+  }, [projects, tasks]);
+
   const generateAISuggestions = (projectsData, tasksData) => {
     const suggestions = [];
     const today = new Date();
 
     projectsData.forEach((p) => {
-      const projectTasks = tasksData.filter((t) => t.projectId === p._id);
+      const projectTasks = tasksData.filter(
+        (t) =>
+          (t.projectId?._id || t.projectId) === p._id // handle populated or just ID
+      );
       const pending = projectTasks.filter((t) => t.status !== 'Done').length;
       const deadline = new Date(p.deadline);
       const diffDays = Math.ceil((deadline - today) / (1000 * 60 * 60 * 24));
@@ -62,7 +76,7 @@ export default function Dashboard() {
 
       if (pending > 5 || diffDays < 1) {
         severity = 'red';
-        text = `Project "${p.name}" is urgent! ${pending} pending tasks and deadline in ${diffDays} day(s).`;
+        text = `Project "${p.name}" is urgent! ${pending} pending tasks, deadline in ${diffDays} day(s).`;
       } else if (pending > 0 || diffDays <= 3) {
         severity = 'orange';
         text = `Project "${p.name}" has ${pending} pending tasks. Deadline in ${diffDays} day(s).`;
@@ -77,53 +91,45 @@ export default function Dashboard() {
     setAiSuggestions(suggestions);
   };
 
-  // Handle Chat
   const handleChatSubmit = async (e) => {
-  e.preventDefault();
-  if (!chatInput.trim()) return;
+    e.preventDefault();
+    if (!chatInput.trim()) return;
 
-  const userMessage = { sender: 'user', text: chatInput };
-  setChatMessages((prev) => [...prev, userMessage]);
+    const userMessage = { sender: 'user', text: chatInput };
+    setChatMessages((prev) => [...prev, userMessage]);
 
-  try {
-    const res = await API.post('/ai', {
-      message: chatInput,
-      context: JSON.stringify({ projects, tasks }),
-    });
-    const aiMessage = { sender: 'ai', text: res.data.message };
-    setChatMessages((prev) => [...prev, aiMessage]);
-  } catch (err) {
-    setChatMessages((prev) => [
-      ...prev,
-      { sender: 'ai', text: 'Sorry, AI service is unavailable.' },
-    ]);
-  }
-
-  setChatInput('');
-};
-
-  // Simple AI logic for chat (can integrate OpenAI API)
-  const generateChatReply = (input) => {
-    input = input.toLowerCase();
-    if (input.includes('pending tasks')) {
-      const totalPending = tasks.filter((t) => t.status !== 'Done').length;
-      return `There are ${totalPending} pending tasks across all projects.`;
+    try {
+      const res = await API.post('/ai', {
+        message: chatInput,
+        context: JSON.stringify({
+          projects: projects.map((p) => ({ _id: p._id, name: p.name })),
+          tasks: tasks.map((t) => ({
+            _id: t._id,
+            title: t.title,
+            status: t.status,
+            projectId: t.projectId?._id || t.projectId,
+          })),
+        }),
+      });
+      const aiMessage = { sender: 'ai', text: res.data.message };
+      setChatMessages((prev) => [...prev, aiMessage]);
+    } catch (err) {
+      setChatMessages((prev) => [
+        ...prev,
+        { sender: 'ai', text: 'Sorry, AI service is unavailable.' },
+      ]);
     }
-    if (input.includes('urgent projects')) {
-      const urgentProjects = aiSuggestions.filter((s) => s.severity === 'red').map((s) => s.text);
-      return urgentProjects.length > 0 ? urgentProjects.join(' | ') : 'No urgent projects right now.';
-    }
-    return 'I can provide info about pending tasks or urgent projects. Try asking!';
+
+    setChatInput('');
   };
 
-  // Stats calculations
+  // Task stats
   const totalTasks = tasks.length;
   const completedTasks = tasks.filter((t) => t.status === 'Done').length;
-  const pendingTasks = tasks.filter((t) => t.status !== 'Done').length;
+  const pendingTasks = totalTasks - completedTasks;
 
-  // Pie chart data
   const pieData = {
-    labels: ['To-Do / In Progress', 'Done'],
+    labels: ['Pending', 'Done'],
     datasets: [
       {
         label: 'Task Status',
@@ -136,13 +142,6 @@ export default function Dashboard() {
 
   return (
     <div className="p-6">
-      <div className="flex justify-between items-center mb-6">
-        <h1 className="text-3xl font-bold">Dashboard</h1>
-        <Link to="/add-project" className="px-3 py-2 bg-blue-600 text-white rounded">
-          + New Project
-        </Link>
-      </div>
-
       {/* Top Summary Cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
         <div className="bg-white p-4 rounded shadow">
@@ -168,7 +167,11 @@ export default function Dashboard() {
               <div
                 key={i}
                 className={`p-3 rounded shadow text-white ${
-                  s.severity === 'red' ? 'bg-red-500' : s.severity === 'orange' ? 'bg-orange-500' : 'bg-green-500'
+                  s.severity === 'red'
+                    ? 'bg-red-500'
+                    : s.severity === 'orange'
+                    ? 'bg-orange-500'
+                    : 'bg-green-500'
                 }`}
               >
                 {s.text}
@@ -178,44 +181,18 @@ export default function Dashboard() {
         </div>
       )}
 
-      {/* Chat Box */}
-      <div className="bg-white p-4 rounded shadow mb-6 max-w-md">
-        <h2 className="text-lg font-bold mb-2">AI Assistant Chat</h2>
-        <div className="border p-2 h-48 overflow-y-auto mb-2">
-          {chatMessages.map((m, i) => (
-            <div key={i} className={`mb-1 ${m.sender === 'user' ? 'text-right' : 'text-left'}`}>
-              <span
-                className={`inline-block px-2 py-1 rounded ${
-                  m.sender === 'user' ? 'bg-blue-500 text-white' : 'bg-gray-200 text-black'
-                }`}
-              >
-                {m.text}
-              </span>
-            </div>
-          ))}
-        </div>
-        <form onSubmit={handleChatSubmit} className="flex gap-2">
-          <input
-            value={chatInput}
-            onChange={(e) => setChatInput(e.target.value)}
-            placeholder="Ask something..."
-            className="flex-1 border p-2 rounded"
-          />
-          <button className="bg-blue-600 text-white px-3 rounded">Send</button>
-        </form>
-      </div>
-
       {/* Project Cards */}
       <h2 className="text-2xl font-bold mb-4">Projects</h2>
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
         {projects.map((p) => {
-          const projectTasks = tasks.filter((t) => t.projectId === p._id);
+          const projectTasks = tasks.filter(
+            (t) => (t.projectId?._id || t.projectId) === p._id
+          );
           const completed = projectTasks.filter((t) => t.status === 'Done').length;
           const progress = projectTasks.length
             ? Math.round((completed / projectTasks.length) * 100)
             : 0;
 
-          // Bar chart data for this project
           const taskStatusCounts = {
             'To-Do': projectTasks.filter((t) => t.status === 'To-Do').length,
             'In Progress': projectTasks.filter((t) => t.status === 'In Progress').length,
@@ -244,7 +221,10 @@ export default function Dashboard() {
               )}
               <div className="mt-2">
                 <div className="w-full bg-gray-200 h-2 rounded">
-                  <div className="bg-green-500 h-2 rounded" style={{ width: `${progress}%` }}></div>
+                  <div
+                    className="bg-green-500 h-2 rounded"
+                    style={{ width: `${progress}%` }}
+                  ></div>
                 </div>
                 <p className="text-sm mt-1">{progress}% Complete</p>
               </div>
