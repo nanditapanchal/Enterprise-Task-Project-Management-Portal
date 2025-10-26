@@ -66,6 +66,60 @@ export default function AdminDashboard() {
     try { const res = await API.get('/users'); setUsers(res.data); } 
     catch (err) { console.error(err); alert('Failed to refresh users'); }
   };
+{/* Users Table */}
+<motion.div className="bg-white text-black shadow rounded p-4">
+  <h2 className="text-xl font-bold mb-4">Users ({users.length})</h2>
+  <table className="w-full table-auto border-collapse">
+    <thead>
+      <tr className="bg-gray-200">
+        <th className="p-2 border">Profile</th>
+        <th className="p-2 border">Name</th>
+        <th className="p-2 border">Email</th>
+        <th className="p-2 border">Role</th>
+        <th className="p-2 border">Actions</th>
+      </tr>
+    </thead>
+    <tbody>
+      {users.map(u => (
+        <tr key={u._id} className="hover:bg-gray-100">
+          {/* Profile Picture */}
+          <td className="p-2 border">
+            <img 
+              src={u.profilePic || '/default-avatar.png'} 
+              alt={u.name} 
+              className="w-10 h-10 rounded-full object-cover cursor-pointer"
+              onClick={() => setSelectedUserProfile(u)} // show profile modal on click
+            />
+          </td>
+          <td className="p-2 border cursor-pointer hover:underline" onClick={() => setSelectedUserProfile(u)}>
+            {u.name}
+          </td>
+          <td className="p-2 border">{u.email}</td>
+          <td className="p-2 border">
+            <select 
+              value={u.role} 
+              disabled={updatingRoleId === u._id} 
+              onChange={e => changeRole(u._id, e.target.value)} 
+              className="border rounded p-1"
+            >
+              <option value="employee">Employee</option>
+              <option value="admin">Admin</option>
+            </select>
+          </td>
+          <td className="p-2 border">
+            <button
+              className={`bg-red-500 text-white px-2 py-1 rounded hover:bg-red-600 ${deletingUserId === u._id ? 'opacity-50 cursor-not-allowed' : ''}`}
+              disabled={deletingUserId === u._id}
+              onClick={() => deleteUser(u._id)}
+            >
+              Delete
+            </button>
+          </td>
+        </tr>
+      ))}
+    </tbody>
+  </table>
+</motion.div>
 
   // Role change
   const changeRole = async (userId, role) => {
@@ -221,6 +275,7 @@ const saveTaskEdit = async (taskId) => {
         <table className="w-full table-auto border-collapse">
           <thead>
             <tr className="bg-gray-200">
+              <th className="p-2 border">Profile</th>
               <th className="p-2 border">Name</th>
               <th className="p-2 border">Email</th>
               <th className="p-2 border">Role</th>
@@ -230,10 +285,25 @@ const saveTaskEdit = async (taskId) => {
           <tbody>
             {users.map(u => (
               <tr key={u._id} className="hover:bg-gray-100">
-                <td className="p-2 border">{u.name}</td>
+                <td className="p-2 border">
+                  <img 
+                    src={u.profilePic || '/default-avatar.png'} 
+                    alt={u.name} 
+                    className="w-10 h-10 rounded-full object-cover cursor-pointer"
+                    onClick={() => setSelectedUserProfile(u)}
+                  />
+                </td>
+                <td className="p-2 border cursor-pointer hover:underline" onClick={() => setSelectedUserProfile(u)}>
+                  {u.name}
+                </td>
                 <td className="p-2 border">{u.email}</td>
                 <td className="p-2 border">
-                  <select value={u.role} disabled={updatingRoleId === u._id} onChange={e => changeRole(u._id, e.target.value)} className="border rounded p-1">
+                  <select 
+                    value={u.role} 
+                    disabled={updatingRoleId === u._id} 
+                    onChange={e => changeRole(u._id, e.target.value)} 
+                    className="border rounded p-1"
+                  >
                     <option value="employee">Employee</option>
                     <option value="admin">Admin</option>
                   </select>
@@ -252,6 +322,22 @@ const saveTaskEdit = async (taskId) => {
           </tbody>
         </table>
       </motion.div>
+
+      {/* User Profile Modal */}
+      {selectedUserProfile && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white text-black rounded p-6 w-96 relative">
+            <button className="absolute top-2 right-2 text-gray-500 hover:text-black" onClick={() => setSelectedUserProfile(null)}>✕</button>
+            <div className="flex flex-col items-center gap-4">
+              <img src={selectedUserProfile.profilePic || '/default-avatar.png'} alt={selectedUserProfile.name} className="w-24 h-24 rounded-full object-cover" />
+              <h2 className="text-xl font-bold">{selectedUserProfile.name}</h2>
+              <p><strong>Email:</strong> {selectedUserProfile.email}</p>
+              <p><strong>Role:</strong> {selectedUserProfile.role}</p>
+            </div>
+          </div>
+        </div>
+      )}
+
 
       {/* Projects Table with Detailed Task Status and Edit/Delete */}
 <motion.div className="bg-white text-black shadow rounded p-4">
