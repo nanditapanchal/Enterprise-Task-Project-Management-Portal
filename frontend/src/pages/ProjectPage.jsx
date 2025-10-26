@@ -2,13 +2,17 @@ import React, { useEffect, useState, useRef } from 'react';
 import { useParams } from 'react-router-dom';
 import API from '../api';
 import { io } from 'socket.io-client';
-import { DragDropContext, Droppable, Draggable } from 'react-beautiful-dnd';
+import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
 import { motion } from 'framer-motion';
 
 export default function ProjectPage({ user }) {
   const { id } = useParams();
   const [project, setProject] = useState(null);
-  const [tasks, setTasks] = useState({ 'To-Do': [], 'In Progress': [], 'Done': [] });
+  const [tasks, setTasks] = useState({
+    'To-Do': [],
+    'In Progress': [],
+    'Done': []
+  });
   const [members, setMembers] = useState([]);
   const [messageText, setMessageText] = useState('');
   const [messages, setMessages] = useState([]);
@@ -30,19 +34,29 @@ export default function ProjectPage({ user }) {
     return () => socketRef.current?.disconnect();
   }, [id]);
 
-  useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages]);
-  useEffect(() => { if (project?.members) setMembers(project.members); }, [project]);
+  useEffect(() => {
+    chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages]);
+
+  useEffect(() => {
+    if (project?.members) setMembers(project.members);
+  }, [project]);
 
   // Load project details and tasks
   const loadProject = async () => {
     try {
       const res = await API.get(`/projects/${id}`);
       setProject(res.data);
+
       const t = await API.get(`/tasks/project/${id}`);
       const grouped = { 'To-Do': [], 'In Progress': [], 'Done': [] };
-      t.data.forEach(task => grouped[task.status]?.push(task));
+      t.data.forEach(task => {
+        grouped[task.status] ? grouped[task.status].push(task) : grouped['To-Do'].push(task);
+      });
       setTasks(grouped);
-    } catch (err) { console.error(err); }
+    } catch (err) {
+      console.error(err);
+    }
   };
 
   // Load chat messages
@@ -50,15 +64,32 @@ export default function ProjectPage({ user }) {
     try {
       const res = await API.get(`/messages/project/${id}`);
       setMessages(res.data);
-    } catch (err) { console.error(err); }
+    } catch (err) {
+      console.error(err);
+    }
   };
 
   // Setup Socket.io
   const setupSocket = () => {
-    socketRef.current = io(import.meta.env.VITE_API_URL?.replace('/api','') || 'http://localhost:5000');
-    socketRef.current.emit('joinProject', { projectId: id });
-    socketRef.current.on('newMessage', (m) => setMessages(prev => [...prev, m]));
-  };
+  socketRef.current = io(import.meta.env.VITE_API_URL?.replace('/api','') || 'http://localhost:5000');
+  socketRef.current.emit('joinProject', { projectId: id });
+
+  socketRef.current.on('newMessage', (m) => setMessages(prev => [...prev, m]));
+
+  // ✅ Listen for live task updates
+  socketRef.current.on('taskUpdated', (updatedTask) => {
+    setTasks(prev => {
+      // Remove from old column, add to new column
+      const newTasks = { ...prev };
+      Object.keys(newTasks).forEach(col => {
+        newTasks[col] = newTasks[col].filter(t => t._id !== updatedTask._id);
+      });
+      newTasks[updatedTask.status]?.push(updatedTask);
+      return newTasks;
+    });
+  });
+};
+
 
   // Send chat message
   const sendMessage = async (e) => {
@@ -68,7 +99,9 @@ export default function ProjectPage({ user }) {
       const res = await API.post(`/messages/project/${id}`, { text: messageText });
       socketRef.current.emit('sendMessage', res.data);
       setMessageText('');
-    } catch (err) { console.error(err); }
+    } catch (err) {
+      console.error(err);
+    }
   };
 
   // Drag & Drop for Kanban board
@@ -87,13 +120,17 @@ export default function ProjectPage({ user }) {
 
     setTasks({ ...tasks, [sourceCol]: newSourceTasks, [destCol]: newDestTasks });
 
-    try { await API.put(`/tasks/task/${draggableId}`, { status: destCol }); } 
-    catch (err) { console.error(err); }
+    try {
+      await API.put(`/tasks/${draggableId}`, { status: destCol });
+
+    } catch (err) {
+      console.error(err);
+    }
   };
 
   // Priority badge
   const getPriorityBadge = (priority) => {
-    switch(priority) {
+    switch (priority) {
       case 'High': return 'bg-red-500 text-white';
       case 'Medium': return 'bg-yellow-400 text-black';
       case 'Low': return 'bg-green-500 text-white';
@@ -104,30 +141,59 @@ export default function ProjectPage({ user }) {
   // Project controls
   const deleteProject = async () => {
     if (!window.confirm('Delete this project?')) return;
-    try { await API.delete(`/projects/${id}`); alert('Project deleted'); window.location.href = '/'; }
-    catch (err) { console.error(err); }
+    try {
+      await API.delete(`/projects/${id}`);
+      alert('Project deleted');
+      window.location.href = '/';
+    } catch (err) {
+      console.error(err);
+    }
   };
+
   const editProject = async () => {
     const newName = prompt('Project Name', project.name);
     const newDesc = prompt('Description', project.description);
     if (!newName || !newDesc) return;
-    try { const res = await API.put(`/projects/${id}`, { name: newName, description: newDesc }); setProject(res.data); }
-    catch (err) { console.error(err); }
+    try {
+      const res = await API.put(`/projects/${id}`, { name: newName, description: newDesc });
+      setProject(res.data);
+    } catch (err) {
+      console.error(err);
+    }
   };
 
   // Task controls
   const deleteTask = async (taskId) => {
     if (!window.confirm('Delete this task?')) return;
-    try { await API.delete(`/tasks/task/${taskId}`); loadProject(); }
-    catch (err) { console.error(err); }
+    try {
+      await API.delete(`/tasks/task/${taskId}`);
+      loadProject();
+    } catch (err) {
+      console.error(err);
+    }
   };
+
   const editTask = async (task) => {
     if (!(user.role === 'admin' || task.assignee?._id === user.id)) return alert('Not allowed');
     const newTitle = prompt('Task Title', task.title);
     const newDesc = prompt('Description', task.description);
     if (!newTitle || !newDesc) return;
-    try { await API.put(`/tasks/task/${task._id}`, { title: newTitle, description: newDesc }); loadProject(); }
-    catch (err) { console.error(err); }
+    try {
+      await API.put(`/tasks/task/${task._id}`, { title: newTitle, description: newDesc });
+      loadProject();
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  // Employee Manual Status Change
+  const updateTaskStatus = async (task, newStatus) => {
+    try {
+      await API.put(`/tasks/task/${task._id}`, { status: newStatus });
+      loadProject();
+    } catch (err) {
+      console.error(err);
+    }
   };
 
   return (
@@ -141,7 +207,7 @@ export default function ProjectPage({ user }) {
             <h2 className="text-2xl font-bold">{project?.name}</h2>
             <p className="text-gray-600">{project?.description}</p>
           </div>
-          {user.role === 'admin'  && (
+          {user.role === 'admin' && (
             <div className="space-x-2">
               <button onClick={editProject} className="px-3 py-1 bg-yellow-500 text-white rounded">Edit</button>
               <button onClick={deleteProject} className="px-3 py-1 bg-red-500 text-white rounded">Delete</button>
@@ -149,13 +215,9 @@ export default function ProjectPage({ user }) {
           )}
         </div>
 
-        {/* Add Task Form */}
+        {/* Add Task Form (Admin only) */}
         {user.role === 'admin' && (
-          <motion.div
-            className="bg-white p-4 rounded shadow mb-4"
-            initial={{ opacity: 0, y: -10 }}
-            animate={{ opacity: 1, y: 0 }}
-          >
+          <motion.div className="bg-white p-4 rounded shadow mb-4" initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }}>
             <h3 className="font-bold mb-2">Add New Task</h3>
             <form
               className="space-y-2"
@@ -171,10 +233,15 @@ export default function ProjectPage({ user }) {
                     status: 'To-Do',
                     deadline: newTaskDeadline
                   });
-                  setNewTaskTitle(''); setNewTaskDesc(''); setNewTaskAssignee('');
-                  setNewTaskPriority('Medium'); setNewTaskDeadline('');
+                  setNewTaskTitle('');
+                  setNewTaskDesc('');
+                  setNewTaskAssignee('');
+                  setNewTaskPriority('Medium');
+                  setNewTaskDeadline('');
                   loadProject();
-                } catch (err) { console.error(err); }
+                } catch (err) {
+                  console.error(err);
+                }
               }}
             >
               <input
@@ -224,53 +291,71 @@ export default function ProjectPage({ user }) {
 
         {/* Kanban Board */}
         <h3 className="font-bold mb-2">Tasks</h3>
-        <DragDropContext onDragEnd={onDragEnd}>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            {['To-Do', 'In Progress', 'Done'].map(col => (
-              <Droppable droppableId={col} key={col}>
-                {(provided) => (
-                  <div className="bg-gray-100 p-3 rounded min-h-[400px]" ref={provided.innerRef} {...provided.droppableProps}>
-                    <h4 className="font-semibold mb-2">{col}</h4>
-                    {tasks[col].map((task, index) => (
-                      <Draggable draggableId={task._id} index={index} key={task._id}>
-                        {(provided, snapshot) => (
-                          <div
-                            ref={provided.innerRef}
-                            {...provided.draggableProps}
-                            {...provided.dragHandleProps}
-                            className={`bg-white p-3 mb-2 rounded shadow ${snapshot.isDragging ? 'bg-blue-100' : ''}`}
-                          >
-                            <div className="flex justify-between items-center">
-                              <div className="font-semibold">{task.title}</div>
-                              <span className={`px-2 py-0.5 rounded text-xs ${getPriorityBadge(task.priority)}`}>
-                                {task.priority}
-                              </span>
-                            </div>
-                            <div className="text-sm text-gray-500">{task.description}</div>
-                            <div className="text-xs text-gray-400 mt-1">
-                              Deadline: {new Date(task.deadline).toLocaleDateString()}
-                            </div>
-                            <div className="text-xs text-gray-400 mt-1">
-                              Assignee: {task.assignee?.name || 'Unassigned'}
-                            </div>
-
-                            {(user.role === 'admin' || task.assignee?._id === user.id) && (
-                              <div className="mt-2 space-x-2">
-                                <button onClick={() => editTask(task)} className="px-2 py-1 text-sm bg-yellow-400 rounded">Edit</button>
-                                <button onClick={() => deleteTask(task._id)} className="px-2 py-1 text-sm bg-red-500 text-white rounded">Delete</button>
+        {tasks && Object.keys(tasks).length > 0 ? (
+          <DragDropContext onDragEnd={onDragEnd}>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              {['To-Do', 'In Progress', 'Done'].map(col => (
+                <Droppable droppableId={col} key={col}>
+                  {(provided) => (
+                    <div
+                      className="bg-gray-100 p-3 rounded min-h-[400px]"
+                      ref={provided.innerRef}
+                      {...provided.droppableProps}
+                    >
+                      <h4 className="font-semibold mb-2">{col}</h4>
+                      {(tasks[col] || []).map((task, index) => (
+                        <Draggable draggableId={task._id} index={index} key={task._id}>
+                          {(provided, snapshot) => (
+                            <div
+                              ref={provided.innerRef}
+                              {...provided.draggableProps}
+                              {...provided.dragHandleProps}
+                              className={`bg-white p-3 mb-2 rounded shadow ${snapshot.isDragging ? 'bg-blue-100' : ''}`}
+                            >
+                              <div className="flex justify-between items-center">
+                                <div className="font-semibold">{task.title}</div>
+                                <span className={`px-2 py-0.5 rounded text-xs ${getPriorityBadge(task.priority)}`}>
+                                  {task.priority}
+                                </span>
                               </div>
-                            )}
-                          </div>
-                        )}
-                      </Draggable>
-                    ))}
-                    {provided.placeholder}
-                  </div>
-                )}
-              </Droppable>
-            ))}
-          </div>
-        </DragDropContext>
+                              <div className="text-sm text-gray-500">{task.description}</div>
+                              <div className="text-xs text-gray-400 mt-1">
+                                Deadline: {new Date(task.deadline).toLocaleDateString()}
+                              </div>
+                              <div className="text-xs text-gray-400 mt-1">
+                                Assignee: {task.assignee?.name || 'Unassigned'}
+                              </div>
+
+                              {/* Manual status change dropdown */}
+                              {(user.role === 'admin' || task.assignee?._id === user.id) && (
+                                <div className="mt-2 flex gap-2">
+                                  <select
+                                    value={task.status}
+                                    onChange={(e) => updateTaskStatus(task, e.target.value)}
+                                    className="p-1 border rounded text-xs"
+                                  >
+                                    <option value="To-Do">To-Do</option>
+                                    <option value="In Progress">In Progress</option>
+                                    <option value="Done">Done</option>
+                                  </select>
+                                  <button onClick={() => editTask(task)} className="px-2 py-1 text-xs bg-yellow-400 rounded">Edit</button>
+                                  <button onClick={() => deleteTask(task._id)} className="px-2 py-1 text-xs bg-red-500 text-white rounded">Delete</button>
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </Draggable>
+                      ))}
+                      {provided.placeholder}
+                    </div>
+                  )}
+                </Droppable>
+              ))}
+            </div>
+          </DragDropContext>
+        ) : (
+          <p className="text-gray-500">Loading tasks...</p>
+        )}
       </div>
 
       {/* Right Column: Chat */}

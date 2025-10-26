@@ -113,14 +113,32 @@ router.put('/:id', auth, async (req, res) => {
     const task = await Task.findById(req.params.id);
     if (!task) return res.status(404).json({ message: 'Task not found' });
 
-    if (req.user.role !== 'admin' && task.assignee.toString() !== req.user.id)
+    if (req.user.role !== 'admin' && (!task.assignee || task.assignee.toString() !== req.user.id))
       return res.status(403).json({ message: 'Forbidden' });
 
-    const updatedTask = await Task.findByIdAndUpdate(req.params.id, req.body, { new: true });
+    // Whitelist fields to avoid schema validation errors
+    const allowedFields = ['title', 'description', 'status', 'assignee', 'dueDate'];
+    const updates = {};
+    allowedFields.forEach(f => { if (req.body[f] !== undefined) updates[f] = req.body[f]; });
+
+    const updatedTask = await Task.findByIdAndUpdate(req.params.id, updates, { new: true });
+
+    // Emit real-time update if project exists
+  if (updatedTask.projectId) {
+  const io = req.app.get('io');
+  if (io && typeof io.to === 'function') {
+    try {
+      io.to(updatedTask.projectId.toString()).emit('taskUpdated', updatedTask);
+    } catch (err) {
+      console.error('Error emitting task update:', err);
+    }
+  }
+}
+
     res.json(updatedTask);
   } catch (err) {
     console.error('Error updating task:', err);
-    res.status(500).json({ message: 'Server error' });
+    res.status(500).json({ message: 'Server error', error: err.message });
   }
 });
 

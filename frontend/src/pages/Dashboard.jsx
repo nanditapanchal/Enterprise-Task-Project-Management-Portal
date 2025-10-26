@@ -50,6 +50,31 @@ export default function Dashboard() {
 
     fetchData();
   }, []);
+const [messages, setMessages] = useState([]);
+const [messageInput, setMessageInput] = useState('');
+const [selectedUser, setSelectedUser] = useState(null); // e.g. employee/admin id
+
+// Fetch messages
+useEffect(() => {
+  if (selectedUser) {
+    API.get(`/chat/messages?projectId=${projectId}&userId=${selectedUser}`)
+      .then(res => setMessages(res.data))
+      .catch(console.error);
+  }
+}, [selectedUser]);
+
+// Send message
+const handleSendMessage = async () => {
+  await API.post('/chat/send', {
+    projectId,
+    receiver: selectedUser,
+    message: messageInput,
+  });
+  setMessageInput('');
+  // Refresh messages
+  const res = await API.get(`/chat/messages?projectId=${projectId}&userId=${selectedUser}`);
+  setMessages(res.data);
+};
 
   // Generate AI suggestions
   useEffect(() => {
