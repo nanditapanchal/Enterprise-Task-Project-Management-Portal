@@ -43,8 +43,9 @@ export default function Dashboard() {
           [projRes, taskRes] = await Promise.all([API.get('/projects/my-projects'), API.get('/tasks/my-tasks')]);
         }
 
-        setProjects(projRes.data);
-        setTasks(taskRes.data);
+           // ✅ Ensure both responses are arrays
+        setProjects(Array.isArray(projRes.data) ? projRes.data : projRes.data.projects || []);
+        setTasks(Array.isArray(taskRes.data) ? taskRes.data : taskRes.data.tasks || []);
       } catch (err) {
         console.error('Error fetching dashboard data:', err);
       }
@@ -161,8 +162,10 @@ export default function Dashboard() {
   };
 
   // Task stats
-  const totalTasks = tasks.length;
-  const completedTasks = tasks.filter((t) => t.status === 'Done').length;
+ const totalTasks = Array.isArray(tasks) ? tasks.length : 0;
+  const completedTasks = Array.isArray(tasks)
+    ? tasks.filter((t) => t.status === 'Done').length
+    : 0;
   const pendingTasks = totalTasks - completedTasks;
 
   const pieData = {
